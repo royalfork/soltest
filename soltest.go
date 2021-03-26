@@ -6,12 +6,14 @@ import (
 	"crypto/ecdsa"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 // TestAccount maintains an ethereum account private key used to
@@ -26,6 +28,7 @@ type TestAccount struct {
 // testing.
 // Use type alias?
 type TestChain struct {
+	contractABIs map[string]abi.ABI
 	*backends.SimulatedBackend
 }
 
@@ -41,8 +44,12 @@ func (c *TestChain) Succeed(txn *types.Transaction, err error) bool {
 	if err != nil {
 		return false
 	}
-
 	return r.Status == 1
+}
+
+// LastGas returns gas used in last transaction.
+func (c *TestChain) LastGas() uint64 {
+	return c.Blockchain().CurrentBlock().GasUsed()
 }
 
 // New returns a TestChain, and a slice of TestAccounts which all have
@@ -69,8 +76,9 @@ func New() (TestChain, []TestAccount) {
 	} {
 		key, _ := crypto.HexToECDSA(pk)
 
+		startBal := new(big.Int).Mul(big.NewInt(1_000_000), big.NewInt(params.Ether))
 		genesis[crypto.PubkeyToAddress(key.PublicKey)] = core.GenesisAccount{
-			Balance: big.NewInt(1e18), // change to 1 eth?
+			Balance: startBal,
 		}
 
 		// For testing, gas price will be 0 to keep balance inquiries easy.
@@ -84,5 +92,7 @@ func New() (TestChain, []TestAccount) {
 		})
 	}
 
-	return TestChain{backends.NewSimulatedBackend(genesis, 0)}, testAccounts
+	return TestChain{
+		SimulatedBackend: backends.NewSimulatedBackend(genesis, 0),
+	}, testAccounts
 }
