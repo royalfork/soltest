@@ -3,10 +3,10 @@
 package soltest
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
 	"github.com/ethereum/go-ethereum/common"
@@ -26,9 +26,7 @@ type TestAccount struct {
 
 // TestChain is a simulated, in-memory, ethereum blockchain used for
 // testing.
-// Use type alias?
 type TestChain struct {
-	contractABIs map[string]abi.ABI
 	*backends.SimulatedBackend
 }
 
@@ -83,7 +81,6 @@ func New() (TestChain, []TestAccount) {
 
 		// For testing, gas price will be 0 to keep balance inquiries easy.
 		t := bind.NewKeyedTransactor(key)
-		t.GasPrice = big.NewInt(0)
 
 		testAccounts = append(testAccounts, TestAccount{
 			Addr: crypto.PubkeyToAddress(key.PublicKey),
@@ -92,7 +89,18 @@ func New() (TestChain, []TestAccount) {
 		})
 	}
 
-	return TestChain{
-		SimulatedBackend: backends.NewSimulatedBackend(genesis, 0),
-	}, testAccounts
+	backend := backends.NewSimulatedBackend(genesis, 0)
+
+	// Because of London fork, SimulatedBackend is no longer able to
+	// accomodate 0 gas prices, because BaseFee on genesis block != 0.
+	// TODO: create go-ethereum PR which fixes this.
+	gasPrice, err := backend.SuggestGasPrice(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	for _, acct := range testAccounts {
+		acct.Auth.GasPrice = gasPrice
+	}
+
+	return TestChain{backend}, testAccounts
 }
